@@ -1,0 +1,130 @@
+!!! 5
+html
+	head
+		title= title
+		link(rel='stylesheet', href='/stylesheets/style.css')
+		script(type='text/javascript', src='/javascripts/jquery.js')
+		script(type="text/javascript")
+			var LOGIN = 1, USERID = 2, DRAW = 4;
+			
+			var canvas;
+			var ctx;
+			var drawing = false;
+			var ws;
+			var userId;
+			
+			var oldX, oldY;
+			
+			function init() {
+				canvas = document.getElementById('me');
+				ctx = canvas.getContext('2d');	
+				
+				canvas.addEventListener("mousemove", onMouseMove, false);
+				canvas.addEventListener("mousedown", onMouseDown, false);
+				canvas.addEventListener("mouseup", onMouseUp, false);
+				
+				ws = new WebSocket("ws://localhost:8080/");
+				
+				ws.onopen = function() {
+					var msg = LOGIN
+					ws.send(msg);
+				};
+				
+				
+				ws.onmessage = function(e) {
+					var cmd = e.data.split(',');
+					switch (parseInt(cmd[0])) {
+						case USERID:
+							setUserId(cmd[1]);
+							break;
+						case DRAW:
+							draw(cmd[2],cmd[3],cmd[4],cmd[5]);
+							break;
+					}
+					console.log(e.data);
+				};
+				
+				ws.onclose = function() {
+					console.log("websocket closed");
+				};
+			}
+			
+			function getXY(e) {
+				var x, y;
+				
+				if (e.pageX != undefined && e.pageY != undefined) {
+					x = e.pageX;
+					y = e.pageY;
+				}
+				else {
+					x = e.clientX + document.body.scrollLeft +
+						document.documentElement.scrollLeft;
+					y = e.clientY + document.body.scrollTop +
+						document.documentElement.scrollTop;
+				}
+				
+				x-=canvas.offsetLeft;
+				y-=canvas.offsetTop;
+				
+				return {x:x, y:y}
+			}
+			
+			function onMouseDown(e) {
+				drawing = true;
+				console.log("drawing: " +drawing);
+				var p = getXY(e);
+				oldX = p.x;
+				oldY = p.y;				
+			}
+					
+			function onMouseUp(e) {
+				drawing = false;
+				console.log("drawing: " +drawing);
+			}
+			
+			function onMouseMove(e) {
+				console.log("moving");
+				var p = getXY(e);				
+				
+				if (drawing) {
+					broadcast(oldX,oldY,p.x,p.y);
+					draw(oldX, oldY, p.x, p.y);
+					
+					//ctx.lineTo(p.x, p.y);
+					//ctx.stroke();
+				}
+			}
+			
+			function setUserId(id) {
+				userId = id;
+				$("#myId").text("UserID: " + id);
+			}
+			
+			function draw(x,y,x1,y1) {
+				ctx.moveTo(x,y);
+				ctx.lineTo(x1,y1);
+				ctx.stroke();
+				oldX = x1;
+				oldY = y1;	
+			}
+			
+			function broadcast(x,y,x1,y1) {
+				var msg = [DRAW, userId, x, y, x1, y1].join(',');
+				ws.send(msg);
+			}
+			
+		style(type='text/css')
+			canvas { border: 2px solid red; }	
+	body
+		script
+			window.onload = init;
+			function clearCanvas() {
+				console.log('clearing canvas');
+				canvas.width = canvas.width
+			}
+			
+		h1= title
+		#myId
+		canvas#me(width=400,height=400)
+		br
+		button(onclick="clearCanvas();") Reset Canvas
