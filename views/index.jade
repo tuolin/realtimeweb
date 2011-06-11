@@ -5,7 +5,7 @@ html
 		link(rel='stylesheet', href='/stylesheets/style.css')
 		script(type='text/javascript', src='/javascripts/jquery.js')
 		script(type="text/javascript")
-			var LOGIN = 1, USERID = 2, DRAW = 4;
+			var IDLE = 0, LOGIN = 1, USERID = 2, DRAW = 4;
 			
 			var canvas;
 			var ctx;
@@ -19,9 +19,14 @@ html
 				canvas = document.getElementById('me');
 				ctx = canvas.getContext('2d');	
 				
-				canvas.addEventListener("mousemove", onMouseMove, false);
-				canvas.addEventListener("mousedown", onMouseDown, false);
-				canvas.addEventListener("mouseup", onMouseUp, false);
+				//canvas.addEventListener("mousemove", onMouseMove, false);
+				//canvas.addEventListener("mousedown", onMouseDown, false);
+				//canvas.addEventListener("mouseup", onMouseUp, false);
+				
+				$("#me").mousemove(onMouseMove);
+				$("#me").mousedown(onMouseDown);
+				$("#me").mouseup(onMouseUp);
+				$("#me").mouseenter(onMouseEnter);
 				
 				ws = new WebSocket("ws://"+document.domain+":8080/");
 				
@@ -47,6 +52,10 @@ html
 				ws.onclose = function() {
 					console.log("websocket closed");
 				};
+				
+				// setup idle message to prevent connection from timeout
+				
+				setInterval("sendIdleMsg()", 5000);
 			}
 			
 			function getXY(e) {
@@ -95,6 +104,11 @@ html
 				}
 			}
 			
+			function onMouseEnter(e) {
+				drawing = false;
+				console.log("mouse enter");
+			}
+			
 			function setUserId(id) {
 				userId = id;
 				$("#myId").text("UserID: " + id);
@@ -111,6 +125,10 @@ html
 			function broadcast(x,y,x1,y1) {
 				var msg = [DRAW, userId, x, y, x1, y1].join(',');
 				ws.send(msg);
+			}
+			
+			function sendIdleMsg() {
+				ws.send(IDLE);
 			}
 			
 		style(type='text/css')

@@ -4,7 +4,7 @@
  */
 
 // Command Constants
-var LOGIN = 1, USERID = 2, DRAW = 4;
+var IDLE = 0, LOGIN = 1, USERID = 2, DRAW = 4;
 
 var express = require('express');
 var ws = require("websocket-server")
@@ -57,6 +57,9 @@ function wsOnMessage(con, msg) {
 	var cmd = msg.split(',');
 	switch (parseInt(cmd[0]))
 	{
+		case IDLE:
+			console.log("idle");
+			break;
 		case LOGIN:
 			console.log("sending back user id");
 			onLogin(con);
