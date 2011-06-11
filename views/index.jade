@@ -23,7 +23,7 @@ html
 				canvas.addEventListener("mousedown", onMouseDown, false);
 				canvas.addEventListener("mouseup", onMouseUp, false);
 				
-				ws = new WebSocket("ws://localhost:8080/");
+				ws = new WebSocket("ws://"+document.domain+":8080/");
 				
 				ws.onopen = function() {
 					var msg = LOGIN
