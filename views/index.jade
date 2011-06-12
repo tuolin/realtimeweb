@@ -5,28 +5,83 @@ html
 		link(rel='stylesheet', href='/stylesheets/style.css')
 		script(type='text/javascript', src='/javascripts/jquery.js')
 		script(type="text/javascript")
-			var IDLE = 0, LOGIN = 1, USERID = 2, DRAW = 4;
+			var IDLE = 0, LOGIN = 1, USERID = 2, DRAW = 4,
+				CHANGECOLOR = 8, CHANGESHAPE = 16, LOGOUT = 32,
+				STARTDRAWING = 64, SYNCUSER = 128;
+			
+			var users = {};
+			
+			var me;
 			
 			var canvas;
 			var ctx;
-			var drawing = false;
-			var ws;
-			var userId;
 			
-			var oldX, oldY;
+			//var drawing = false;
+			var ws;
+			
+			//var userId;
+			
+			//var oldX, oldY;
+			//var color;
+			
+			var onButton;
+			
+			function User(userId) {
+				this.drawing = false;
+				this.userId = userId;
+				this.oldX = undefined;
+				this.oldY = undefined;
+				this.color = undefined;
+				this.shape = undefined;
+				
+				this.setDrawing = function(d) {
+					this.drawing = d;
+				}
+				
+				this.save = function(x, y) {
+					this.oldX = x;
+					this.oldY = y;
+				}
+				
+				this.setColor = function(c) {
+					this.color = c;
+				}
+				
+				this.setShape = function(s) {
+					this.shape = s;
+				}
+			}
 			
 			function init() {
-				canvas = document.getElementById('me');
+				canvas = document.getElementById('canvas');
 				ctx = canvas.getContext('2d');	
+				
+				canvas.width = $("#can")[0].clientWidth;
+				canvas.height = $("#can")[0].clientHeight-70;
 				
 				//canvas.addEventListener("mousemove", onMouseMove, false);
 				//canvas.addEventListener("mousedown", onMouseDown, false);
 				//canvas.addEventListener("mouseup", onMouseUp, false);
 				
-				$("#me").mousemove(onMouseMove);
-				$("#me").mousedown(onMouseDown);
-				$("#me").mouseup(onMouseUp);
-				$("#me").mouseenter(onMouseEnter);
+				$("#canvas").mousemove(onMouseMove);
+				$("#canvas").mousedown(onMouseDown);
+				$("#canvas").mouseup(onMouseUp);
+				$("#canvas").mouseenter(onMouseEnter);
+				
+				$("td button").click(function(e) {
+					me.setColor(e.currentTarget.style.background);
+					broadcastColorChange();
+					
+					//ctx.strokeStyle = e.currentTarget.style.background
+					if (onButton != e.currentTarget) {
+						if (onButton) {
+							onButton.className = "toolup";
+						}
+						
+						e.currentTarget.className = "tooldown";
+						onButton = e.currentTarget;
+					}
+				});
 				
 				ws = new WebSocket("ws://"+document.domain+":8080/");
 				
@@ -37,14 +92,33 @@ html
 				
 				
 				ws.onmessage = function(e) {
-					var cmd = e.data.split(',');
+					var cmd = e.data.split('|');
 					switch (parseInt(cmd[0])) {
+						case LOGIN:
+							var u = new User(cmd[1]);
+							users[cmd[1]] = u;
+							console.log("created new user: " + cmd[1]);
+							break;
 						case USERID:
 							setUserId(cmd[1]);
 							break;
-						case DRAW:
-							draw(cmd[2],cmd[3],cmd[4],cmd[5]);
+						case SYNCUSER:
+							var u = new User(cmd[1]);
+							u.save(cmd[2], cmd[3]);
+							u.setColor(cmd[4]);
+							u.setShape(cmd[5]);
+							users[cmd[1]] = u;
 							break;
+						case STARTDRAWING:
+							users[cmd[1]].save(cmd[2], cmd[3]);
+							break;
+						case DRAW:
+							draw(users[cmd[1]],cmd[2],cmd[3]);
+							break;
+						case CHANGECOLOR:
+							users[cmd[1]].setColor(cmd[2]);
+							break;
+							
 					}
 					console.log(e.data);
 				};
@@ -79,25 +153,31 @@ html
 			}
 			
 			function onMouseDown(e) {
-				drawing = true;
-				console.log("drawing: " +drawing);
+				me.setDrawing(true);
+				//drawing = true;
+				console.log("drawing: " +me.drawing);
 				var p = getXY(e);
-				oldX = p.x;
-				oldY = p.y;				
+				//oldX = p.x;
+				//oldY = p.y;
+				me.save(p.x, p.y);
+				broadcastStartDrawing();
 			}
 					
 			function onMouseUp(e) {
-				drawing = false;
-				console.log("drawing: " +drawing);
+				//drawing = false;
+				me.setDrawing(false);
+				console.log("drawing: " +me.drawing);
 			}
 			
 			function onMouseMove(e) {
 				console.log("moving");
 				var p = getXY(e);				
 				
-				if (drawing) {
-					broadcast(oldX,oldY,p.x,p.y);
-					draw(oldX, oldY, p.x, p.y);
+				if (me.drawing) {
+					broadcastDraw(p.x,p.y);
+										
+					//draw(oldX, oldY, p.x, p.y);
+					draw(me, p.x, p.y);
 					
 					//ctx.lineTo(p.x, p.y);
 					//ctx.stroke();
@@ -105,25 +185,40 @@ html
 			}
 			
 			function onMouseEnter(e) {
-				drawing = false;
+				//drawing = false;
+				me.setDrawing(false);
 				console.log("mouse enter");
 			}
 			
 			function setUserId(id) {
-				userId = id;
+				me = new User(id);
+				$("td button:last").click();			
 				$("#myId").text("UserID: " + id);
 			}
 			
-			function draw(x,y,x1,y1) {
-				ctx.moveTo(x,y);
+			function draw(user,x1,y1) {
+				ctx.beginPath();
+				ctx.moveTo(user.oldX,user.oldY);
 				ctx.lineTo(x1,y1);
+				ctx.strokeStyle = user.color;
 				ctx.stroke();
-				oldX = x1;
-				oldY = y1;	
+				//oldX = x1;
+				//oldY = y1;
+				user.save(x1, y1);
 			}
 			
-			function broadcast(x,y,x1,y1) {
-				var msg = [DRAW, userId, x, y, x1, y1].join(',');
+			function broadcastStartDrawing() {
+				var msg = [STARTDRAWING, me.userId, me.oldX, me.oldY].join('|');
+				ws.send(msg);
+			}
+			
+			function broadcastColorChange() {
+				var msg = [CHANGECOLOR, me.userId, me.color].join('|');
+				ws.send(msg);
+			}
+			
+			function broadcastDraw(x1,y1) {
+				var msg = [DRAW, me.userId, x1, y1].join('|');
 				ws.send(msg);
 			}
 			
@@ -132,7 +227,23 @@ html
 			}
 			
 		style(type='text/css')
-			canvas { border: 2px solid red; }	
+			canvas { border: 1px solid gray; }
+			table { border: 1px solid gray }
+			table { border-collapse:collapse; }
+			td { width: 32px; }
+			tr { height: 32px; }
+			button.toolup { 
+				width: 28px; 
+				height:28px; 
+				border:1px outset;			
+			}
+
+			button.tooldown {
+				width: 28px; 
+				height:28px; 
+				border:1px inset;			
+			}
+			
 	body
 		script
 			window.onload = init;
@@ -140,9 +251,45 @@ html
 				console.log('clearing canvas');
 				canvas.width = canvas.width
 			}
-			
-		h1= title
-		#myId
-		canvas#me(width=400,height=400)
-		br
-		button(onclick="clearCanvas();") Reset Canvas
+		
+		div(style="width:100%")
+			div
+				h1= title
+				p 点击、按住鼠标左键，在画布上移动可以画线。
+				p 打开新的浏览器，可以看到不同用户画的线条同时出现。
+				#myId
+			div(style="float:left; width:15%")
+				table#shapes
+					tr
+						td(colspan=2, align="center", style="border: 1px solid gray") 形状
+					tr
+						td line
+						td freehand
+					tr
+						td rect
+						td eclipse
+				br
+				br
+				table#colors(style="background-color:rgb(220,225,245)")
+					tr
+						td(colspan=2, align="center", style="border: 1px solid gray") 颜色
+					tr
+						td 
+							button(class="toolup", style="background-color:white;")
+						td 
+							button(class="toolup", style="background-color:red;")
+					tr
+						td
+							button(class="toolup", style="background-color:blue;")
+						td
+							button(class="toolup", style="background-color:yellow;")
+					tr
+						td
+							button(class="toolup", style="background-color:brown;")
+						td
+							button(class="toolup", style="background-color:black;")
+							
+			div#can(style="float:left; width:85%; height:550px")
+				canvas#canvas
+				br
+				button(onclick="clearCanvas();") Reset Canvas
